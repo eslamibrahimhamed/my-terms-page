@@ -40,6 +40,10 @@
   pre { background: var(--code); padding: 10px; border-radius: 8px; margin: 8px 0 0; white-space: pre-wrap; direction: ltr; text-align: left; }
   .empty { color: var(--muted); text-align: center; padding: 32px 0; }
   .count { color: var(--muted); font-size: 14px; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 12px; }
+  .chip { padding: 4px 12px; border-radius: 999px; font-size: 14px; }
+  .chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .tag { display: inline-block; font-size: 12px; font-weight: normal; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 0 8px; margin-inline-start: 8px; vertical-align: middle; }
 </style>
 </head>
 <body>
@@ -58,6 +62,9 @@
     <form id="form">
       <label for="term">المصطلح</label>
       <input id="term" class="ltr" required autocomplete="off" placeholder="closure">
+      <label for="category">القسم</label>
+      <input id="category" class="ltr" list="categories" required autocomplete="off" placeholder="JS">
+      <datalist id="categories"></datalist>
       <label for="meaning">شرحه بكلامي</label>
       <textarea id="meaning" dir="auto" required></textarea>
       <label for="code">سطر كود (اختياري)</label>
@@ -73,6 +80,7 @@
       <span class="count" id="count"></span>
     </div>
 
+    <div class="chips" id="chips"></div>
     <div id="list"></div>
   </div>
 </main>
@@ -86,6 +94,7 @@
   let token = readToken();
   let terms = [];
   let editingId = null;
+  let activeCategory = '';
 
   function readToken() {
     try { return localStorage.getItem(TOKEN_KEY); } catch { return null; }
@@ -158,10 +167,32 @@
     return node;
   }
 
+  function renderChips(categories) {
+    const chips = $('chips');
+    chips.replaceChildren();
+    if (!categories.length) return;
+    for (const c of ['', ...categories]) {
+      const count = c ? terms.filter((t) => t.category === c).length : terms.length;
+      const chip = el('button', { type: 'button', dir: 'auto', className: 'chip' + (c === activeCategory ? ' active' : '') }, `${c || 'الكل'} (${count})`);
+      chip.onclick = () => {
+        activeCategory = c;
+        if (!editingId) $('category').value = c;
+        render();
+      };
+      chips.append(chip);
+    }
+  }
+
   function render() {
+    const categories = [...new Set(terms.map((t) => t.category).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+    if (!categories.includes(activeCategory)) activeCategory = '';
+    $('categories').replaceChildren(...categories.map((c) => el('option', { value: c })));
+    renderChips(categories);
+
     const q = $('search').value.trim().toLowerCase();
     const shown = terms
-      .filter((t) => !q || (t.term + ' ' + t.meaning).toLowerCase().includes(q))
+      .filter((t) => !activeCategory || t.category === activeCategory)
+      .filter((t) => !q || [t.term, t.category, t.meaning].join(' ').toLowerCase().includes(q))
       .sort((a, b) => a.term.localeCompare(b.term));
 
     $('count').textContent = terms.length ? `${terms.length} مصطلح` : '';
@@ -175,7 +206,9 @@
 
     for (const t of shown) {
       const card = el('article', { className: 'term' });
-      card.append(el('h2', { dir: 'ltr' }, t.term), el('p', { dir: 'auto' }, t.meaning));
+      const title = el('h2', { dir: 'ltr' }, t.term);
+      if (t.category) title.append(el('span', { className: 'tag' }, t.category));
+      card.append(title, el('p', { dir: 'auto' }, t.meaning));
       if (t.code) card.append(el('pre', {}, t.code));
       const edit = el('button', { type: 'button' }, 'تعديل');
       const del = el('button', { type: 'button', className: 'danger' }, 'حذف');
@@ -191,6 +224,7 @@
   function startEdit(t) {
     editingId = t.id;
     $('term').value = t.term;
+    $('category').value = t.category || '';
     $('meaning').value = t.meaning;
     $('code').value = t.code || '';
     $('submit').textContent = 'حفظ التعديل';
@@ -202,6 +236,7 @@
   function resetForm() {
     editingId = null;
     $('form').reset();
+    $('category').value = activeCategory;
     $('submit').textContent = 'إضافة';
     $('cancel').hidden = true;
   }
@@ -239,16 +274,26 @@
 
   $('form').onsubmit = async (e) => {
     e.preventDefault();
-    const entry = { term: $('term').value.trim(), meaning: $('meaning').value.trim(), code: $('code').value.trim() };
-    if (!entry.term || !entry.meaning) return;
+    const entry = {
+      term: $('term').value.trim(),
+      category: $('category').value.trim(),
+      meaning: $('meaning').value.trim(),
+      code: $('code').value.trim(),
+    };
+    if (!entry.term || !entry.category || !entry.meaning) return;
     const id = editingId;
     const saved = await commit(`${id ? 'edit' : 'add'}: ${entry.term}`, (all) => {
       if (all.some((t) => t.id !== id && sameTerm(t.term, entry.term))) {
         throw new Error('المصطلح ده موجود بالفعل، عدّله من القايمة.');
       }
+      // Reuse an existing category's spelling so "js" and "JS" stay one chip
+      entry.category = all.map((t) => t.category).find((c) => c && sameTerm(c, entry.category)) || entry.category;
       return id ? all.map((t) => (t.id === id ? { ...t, ...entry } : t)) : [...all, { id: Date.now(), ...entry }];
     });
-    if (saved) resetForm();
+    if (!saved) return;
+    if (activeCategory) activeCategory = entry.category;
+    resetForm();
+    render();
   };
 
   $('cancel').onclick = resetForm;
