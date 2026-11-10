@@ -70,7 +70,6 @@
 
     <div class="tools">
       <input id="search" type="search" placeholder="بحث...">
-      <button type="button" id="logout">خروج</button>
       <span class="count" id="count"></span>
     </div>
 
@@ -254,7 +253,6 @@
 
   $('cancel').onclick = resetForm;
   $('search').oninput = render;
-  $('logout').onclick = () => confirm('تمسح التوكن من البراوزر ده؟') && logout();
 
   if (token) load();
   else $('setup').hidden = false;
