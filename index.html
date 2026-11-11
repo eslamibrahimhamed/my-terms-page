@@ -69,6 +69,9 @@
       <label for="category">القسم</label>
       <input id="category" class="ltr" list="categories" required autocomplete="off" placeholder="JS">
       <datalist id="categories"></datalist>
+      <label for="subcategory">قسم فرعي (اختياري)</label>
+      <input id="subcategory" class="ltr" list="subcategories" autocomplete="off" placeholder="Fundamentals">
+      <datalist id="subcategories"></datalist>
       <label for="meaning">شرحه بكلامي</label>
       <textarea id="meaning" dir="auto" required></textarea>
       <label for="code">سطر كود (اختياري)</label>
@@ -85,6 +88,7 @@
     </div>
 
     <div class="chips" id="chips"></div>
+    <div class="chips" id="subchips"></div>
     <div id="list"></div>
   </div>
 </main>
@@ -99,6 +103,7 @@
   let terms = [];
   let editingId = null;
   let activeCategory = '';
+  let activeSub = '';
 
   function readToken() {
     try { return localStorage.getItem(TOKEN_KEY); } catch { return null; }
@@ -171,6 +176,32 @@
     return node;
   }
 
+  const subsOf = (c) =>
+    [...new Set(terms.filter((t) => t.subcategory && sameTerm(t.category || '', c)).map((t) => t.subcategory))].sort((a, b) => a.localeCompare(b));
+
+  function fillSubs() {
+    $('subcategories').replaceChildren(...subsOf($('category').value).map((s) => el('option', { value: s })));
+  }
+
+  function renderSubChips() {
+    const box = $('subchips');
+    box.replaceChildren();
+    const subs = activeCategory ? subsOf(activeCategory) : [];
+    if (!subs.includes(activeSub)) activeSub = '';
+    if (!subs.length) return;
+    const inCategory = terms.filter((t) => t.category === activeCategory);
+    for (const s of ['', ...subs]) {
+      const count = s ? inCategory.filter((t) => t.subcategory === s).length : inCategory.length;
+      const chip = el('button', { type: 'button', dir: 'auto', className: 'chip' + (s === activeSub ? ' active' : '') }, `${s || 'الكل'} (${count})`);
+      chip.onclick = () => {
+        activeSub = s;
+        if (!editingId) $('subcategory').value = s;
+        render();
+      };
+      box.append(chip);
+    }
+  }
+
   function renderChips(categories) {
     const chips = $('chips');
     chips.replaceChildren();
@@ -180,7 +211,11 @@
       const chip = el('button', { type: 'button', dir: 'auto', className: 'chip' + (c === activeCategory ? ' active' : '') }, `${c || 'الكل'} (${count})`);
       chip.onclick = () => {
         activeCategory = c;
-        if (!editingId) $('category').value = c;
+        activeSub = '';
+        if (!editingId) {
+          $('category').value = c;
+          $('subcategory').value = '';
+        }
         render();
       };
       chips.append(chip);
@@ -192,11 +227,14 @@
     if (!categories.includes(activeCategory)) activeCategory = '';
     $('categories').replaceChildren(...categories.map((c) => el('option', { value: c })));
     renderChips(categories);
+    renderSubChips();
+    fillSubs();
 
     const q = $('search').value.trim().toLowerCase();
     const shown = terms
       .filter((t) => !activeCategory || t.category === activeCategory)
-      .filter((t) => !q || [t.term, t.category, t.meaning].join(' ').toLowerCase().includes(q))
+      .filter((t) => !activeSub || t.subcategory === activeSub)
+      .filter((t) => !q || [t.term, t.category, t.subcategory, t.meaning].join(' ').toLowerCase().includes(q))
       .sort((a, b) => a.id - b.id);
 
     $('count').textContent = terms.length ? `${terms.length} مصطلح` : '';
@@ -211,7 +249,7 @@
     for (const t of shown) {
       const card = el('details', { className: 'term' });
       const title = el('h2', { dir: 'ltr' }, t.term);
-      if (t.category) title.append(el('span', { className: 'tag' }, t.category));
+      if (t.category) title.append(el('span', { className: 'tag' }, t.subcategory ? `${t.category} › ${t.subcategory}` : t.category));
       const summary = el('summary');
       summary.append(title);
       card.append(summary, el('p', { dir: 'auto' }, t.meaning));
@@ -231,6 +269,8 @@
     editingId = t.id;
     $('term').value = t.term;
     $('category').value = t.category || '';
+    $('subcategory').value = t.subcategory || '';
+    fillSubs();
     $('meaning').value = t.meaning;
     $('code').value = t.code || '';
     $('submit').textContent = 'حفظ التعديل';
@@ -282,6 +322,7 @@
     const entry = {
       term: $('term').value.trim(),
       category: $('category').value.trim(),
+      subcategory: $('subcategory').value.trim(),
       meaning: $('meaning').value.trim(),
       code: $('code').value.trim(),
     };
@@ -293,16 +334,24 @@
       }
       // Reuse an existing category's spelling so "js" and "JS" stay one chip
       entry.category = all.map((t) => t.category).find((c) => c && sameTerm(c, entry.category)) || entry.category;
-      return id ? all.map((t) => (t.id === id ? { ...t, ...entry } : t)) : [...all, { id: Date.now(), ...entry }];
+      entry.subcategory = all
+        .filter((t) => t.category === entry.category)
+        .map((t) => t.subcategory)
+        .find((s) => s && sameTerm(s, entry.subcategory)) || entry.subcategory;
+      // Empty subcategory means a single-level category: drop the field
+      const clean = ({ subcategory, ...rest }) => (subcategory ? { ...rest, subcategory } : rest);
+      return id ? all.map((t) => (t.id === id ? clean({ ...t, ...entry }) : t)) : [...all, clean({ id: Date.now(), ...entry })];
     });
     if (!saved) return;
     if (activeCategory) activeCategory = entry.category;
+    if (activeSub) activeSub = entry.subcategory;
     resetForm();
     render();
   };
 
   $('cancel').onclick = resetForm;
   $('search').oninput = render;
+  $('category').oninput = fillSubs;
 
   if (token) load();
   else $('setup').hidden = false;
