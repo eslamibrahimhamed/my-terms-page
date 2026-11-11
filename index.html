@@ -50,6 +50,9 @@
   .chip { padding: 4px 12px; border-radius: 999px; font-size: 14px; }
   .chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
   #subchips .chip.active { background: var(--accent-sub); border-color: var(--accent-sub); }
+  .interview { margin-top: 12px; padding: 4px 12px 12px; border: 1px solid var(--accent-sub); border-radius: 8px; }
+  .interview h3 { margin: 8px 0 0; font-size: 15px; color: var(--accent-sub); }
+  .interview .q { font-weight: 600; margin-top: 14px; }
   .tag { display: inline-block; font-size: 12px; font-weight: normal; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 0 8px; margin-inline-start: 8px; vertical-align: middle; }
 </style>
 </head>
@@ -238,7 +241,7 @@
     const shown = terms
       .filter((t) => q || !activeCategory || t.category === activeCategory)
       .filter((t) => q || !subOptions.length || (t.subcategory || '') === activeSub)
-      .filter((t) => !q || [t.term, t.category, t.subcategory, t.meaning].join(' ').toLowerCase().includes(q))
+      .filter((t) => !q || [t.term, t.category, t.subcategory, t.meaning, ...(t.interview || []).flatMap((i) => [i.q, i.a])].join(' ').toLowerCase().includes(q))
       .sort((a, b) => a.id - b.id);
 
     $('count').textContent = terms.length ? `${terms.length} مصطلح` : '';
@@ -258,6 +261,15 @@
       summary.append(title);
       card.append(summary, el('p', { dir: 'auto' }, t.meaning));
       if (t.code) card.append(el('pre', {}, t.code));
+      if (t.interview?.length) {
+        const box = el('section', { className: 'interview' });
+        box.append(el('h3', {}, 'أسئلة الإنترفيو'));
+        for (const item of t.interview) {
+          box.append(el('p', { className: 'q', dir: 'auto' }, item.q), el('p', { dir: 'auto' }, item.a));
+          if (item.code) box.append(el('pre', {}, item.code));
+        }
+        card.append(box);
+      }
       const edit = el('button', { type: 'button' }, 'تعديل');
       const del = el('button', { type: 'button', className: 'danger' }, 'حذف');
       edit.onclick = () => startEdit(t);
