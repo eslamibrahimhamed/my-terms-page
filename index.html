@@ -9,11 +9,13 @@
   :root {
     --bg: #f6f7f9; --card: #fff; --text: #1d2330; --muted: #667085;
     --line: #e3e6ea; --accent: #2f6fde; --code: #f1f3f6; --danger: #c4372d;
+    --accent-sub: #0f8a6c;
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --bg: #14161a; --card: #1d2026; --text: #e7e9ee; --muted: #9aa3b2;
       --line: #2c3038; --accent: #6c9cf0; --code: #262a31; --danger: #ef6b61;
+      --accent-sub: #2f9e7c;
     }
   }
   * { box-sizing: border-box; }
@@ -47,6 +49,7 @@
   .chips { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 12px; }
   .chip { padding: 4px 12px; border-radius: 999px; font-size: 14px; }
   .chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  #subchips .chip.active { background: var(--accent-sub); border-color: var(--accent-sub); }
   .tag { display: inline-block; font-size: 12px; font-weight: normal; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 0 8px; margin-inline-start: 8px; vertical-align: middle; }
 </style>
 </head>
