@@ -82,6 +82,8 @@
       <textarea id="meaning" dir="auto" required></textarea>
       <label for="code">سطر كود (اختياري)</label>
       <textarea id="code" class="ltr mono"></textarea>
+      <label for="interview">أسئلة الإنترفيو (اختياري)</label>
+      <textarea id="interview" class="ltr mono" rows="7" placeholder="Q: What is typeof NaN?&#10;A: بترجّع number، لأن NaN رقم غلط بس لسه number.&#10;typeof NaN   // 'number'&#10;&#10;Q: next question..."></textarea>
       <div class="row">
         <button type="submit" class="primary" id="submit">إضافة</button>
         <button type="button" id="cancel" hidden>إلغاء التعديل</button>
@@ -127,6 +129,20 @@
 
   const fromBase64 = (b64) => new TextDecoder().decode(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)));
   const sameTerm = (a, b) => a.trim().toLowerCase() === b.trim().toLowerCase();
+
+  // Textarea format per question: a "Q: ..." line, an "A: ..." line, then optional code lines
+  function parseInterview(text) {
+    return text.split(/^(?=Q:)/m).map((b) => b.trim()).filter((b) => b.startsWith('Q:')).map((block) => {
+      const [qLine, ...rest] = block.split('\n');
+      const aIndex = rest.findIndex((l) => l.startsWith('A:'));
+      const item = { q: qLine.slice(2).trim(), a: aIndex >= 0 ? rest[aIndex].slice(2).trim() : '' };
+      const code = rest.slice(aIndex + 1).join('\n').replace(/^\n+/, '').trimEnd();
+      return code ? { ...item, code } : item;
+    });
+  }
+
+  const formatInterview = (items = []) =>
+    items.map((i) => [`Q: ${i.q}`, `A: ${i.a}`, i.code].filter(Boolean).join('\n')).join('\n\n');
 
   async function gh(method, body) {
     const res = await fetch(API, {
@@ -289,6 +305,7 @@
     fillSubs();
     $('meaning').value = t.meaning;
     $('code').value = t.code || '';
+    $('interview').value = formatInterview(t.interview);
     $('submit').textContent = 'حفظ التعديل';
     $('cancel').hidden = false;
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -341,6 +358,7 @@
       subcategory: $('subcategory').value.trim(),
       meaning: $('meaning').value.trim(),
       code: $('code').value.trim(),
+      interview: parseInterview($('interview').value),
     };
     if (!entry.term || !entry.category || !entry.meaning) return;
     const id = editingId;
@@ -354,8 +372,12 @@
         .filter((t) => t.category === entry.category)
         .map((t) => t.subcategory)
         .find((s) => s && sameTerm(s, entry.subcategory)) || entry.subcategory;
-      // Empty subcategory means a single-level category: drop the field
-      const clean = ({ subcategory, ...rest }) => (subcategory ? { ...rest, subcategory } : rest);
+      // Drop empty optional fields (no subcategory = single-level category)
+      const clean = ({ subcategory, interview, ...rest }) => ({
+        ...rest,
+        ...(subcategory ? { subcategory } : {}),
+        ...(interview.length ? { interview } : {}),
+      });
       return id ? all.map((t) => (t.id === id ? clean({ ...t, ...entry }) : t)) : [...all, clean({ id: Date.now(), ...entry })];
     });
     if (!saved) return;
