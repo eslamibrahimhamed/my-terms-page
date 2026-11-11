@@ -51,7 +51,8 @@
   .chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
   #subchips .chip.active { background: var(--accent-sub); border-color: var(--accent-sub); }
   .interview { margin-top: 12px; padding: 4px 12px 12px; border: 1px solid var(--accent-sub); border-radius: 8px; }
-  .interview h3 { margin: 8px 0 0; font-size: 15px; color: var(--accent-sub); }
+  .interview-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 8px; }
+  .interview h3 { margin: 0; font-size: 15px; color: var(--accent-sub); }
   .interview .q { font-weight: 600; margin-top: 14px; }
   .tag { display: inline-block; font-size: 12px; font-weight: normal; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 0 8px; margin-inline-start: 8px; vertical-align: middle; }
 </style>
@@ -83,7 +84,7 @@
       <label for="code">سطر كود (اختياري)</label>
       <textarea id="code" class="ltr mono"></textarea>
       <label for="interview">أسئلة الإنترفيو (اختياري)</label>
-      <textarea id="interview" class="ltr mono" rows="7" placeholder="Q: What is typeof NaN?&#10;A: بترجّع number، لأن NaN رقم غلط بس لسه number.&#10;typeof NaN   // 'number'&#10;&#10;Q: next question..."></textarea>
+      <textarea id="interview" class="ltr mono" rows="7" placeholder="Q: What is typeof NaN?&#10;س: الـ typeof بتاعة NaN بترجّع إيه؟&#10;A: بترجّع number، لأن NaN رقم غلط بس لسه number.&#10;typeof NaN   // 'number'&#10;&#10;Q: next question..."></textarea>
       <div class="row">
         <button type="submit" class="primary" id="submit">إضافة</button>
         <button type="button" id="cancel" hidden>إلغاء التعديل</button>
@@ -130,19 +131,21 @@
   const fromBase64 = (b64) => new TextDecoder().decode(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)));
   const sameTerm = (a, b) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
-  // Textarea format per question: a "Q: ..." line, an "A: ..." line, then optional code lines
+  // Textarea format per question: "Q: english", optional "س: عربي", "A: answer", then optional code lines
   function parseInterview(text) {
     return text.split(/^(?=Q:)/m).map((b) => b.trim()).filter((b) => b.startsWith('Q:')).map((block) => {
       const [qLine, ...rest] = block.split('\n');
-      const aIndex = rest.findIndex((l) => l.startsWith('A:'));
-      const item = { q: qLine.slice(2).trim(), a: aIndex >= 0 ? rest[aIndex].slice(2).trim() : '' };
-      const code = rest.slice(aIndex + 1).join('\n').replace(/^\n+/, '').trimEnd();
+      const header = {};
+      let i = 0;
+      for (; i < rest.length && /^(س|A):/.test(rest[i]); i++) header[rest[i][0]] = rest[i].slice(2).trim();
+      const item = { q: qLine.slice(2).trim(), ...(header['س'] ? { qAr: header['س'] } : {}), a: header.A || '' };
+      const code = rest.slice(i).join('\n').replace(/^\n+/, '').trimEnd();
       return code ? { ...item, code } : item;
     });
   }
 
   const formatInterview = (items = []) =>
-    items.map((i) => [`Q: ${i.q}`, `A: ${i.a}`, i.code].filter(Boolean).join('\n')).join('\n\n');
+    items.map((i) => [`Q: ${i.q}`, i.qAr && `س: ${i.qAr}`, `A: ${i.a}`, i.code].filter(Boolean).join('\n')).join('\n\n');
 
   async function gh(method, body) {
     const res = await fetch(API, {
@@ -257,7 +260,7 @@
     const shown = terms
       .filter((t) => q || !activeCategory || t.category === activeCategory)
       .filter((t) => q || !subOptions.length || (t.subcategory || '') === activeSub)
-      .filter((t) => !q || [t.term, t.category, t.subcategory, t.meaning, ...(t.interview || []).flatMap((i) => [i.q, i.a])].join(' ').toLowerCase().includes(q))
+      .filter((t) => !q || [t.term, t.category, t.subcategory, t.meaning, ...(t.interview || []).flatMap((i) => [i.q, i.qAr, i.a])].join(' ').toLowerCase().includes(q))
       .sort((a, b) => a.id - b.id);
 
     $('count').textContent = terms.length ? `${terms.length} مصطلح` : '';
@@ -279,10 +282,26 @@
       if (t.code) card.append(el('pre', {}, t.code));
       if (t.interview?.length) {
         const box = el('section', { className: 'interview' });
-        box.append(el('h3', {}, 'أسئلة الإنترفيو'));
+        const head = el('div', { className: 'interview-head' });
+        head.append(el('h3', {}, 'أسئلة الإنترفيو'));
+        box.append(head);
+        const questions = [];
         for (const item of t.interview) {
-          box.append(el('p', { className: 'q', dir: 'auto' }, item.q), el('p', { dir: 'auto' }, item.a));
+          const q = el('p', { className: 'q', dir: 'auto' }, item.q);
+          questions.push([q, item]);
+          box.append(q, el('p', { dir: 'auto' }, item.a));
           if (item.code) box.append(el('pre', {}, item.code));
+        }
+        // Swaps the questions between English and Arabic without re-rendering (keeps the card open)
+        if (t.interview.some((i) => i.qAr)) {
+          let arabic = false;
+          const toggle = el('button', { type: 'button', className: 'chip' }, 'عربي');
+          toggle.onclick = () => {
+            arabic = !arabic;
+            toggle.textContent = arabic ? 'English' : 'عربي';
+            for (const [p, item] of questions) p.textContent = arabic ? item.qAr || item.q : item.q;
+          };
+          head.append(toggle);
         }
         card.append(box);
       }
