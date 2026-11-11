@@ -36,6 +36,10 @@
   .tools input { flex: 1; min-width: 180px; }
   .term { margin-bottom: 12px; }
   .term h2 { font-size: 18px; margin: 0; text-align: right; }
+  .term summary { cursor: pointer; list-style: none; }
+  .term summary::-webkit-details-marker { display: none; }
+  .term h2::before { content: '▸ '; color: var(--muted); }
+  .term[open] h2::before { content: '▾ '; }
   .term p { margin: 6px 0 0; white-space: pre-wrap; }
   pre { background: var(--code); padding: 10px; border-radius: 8px; margin: 8px 0 0; white-space: pre-wrap; direction: ltr; text-align: left; }
   .empty { color: var(--muted); text-align: center; padding: 32px 0; }
@@ -205,10 +209,12 @@
     }
 
     for (const t of shown) {
-      const card = el('article', { className: 'term' });
+      const card = el('details', { className: 'term' });
       const title = el('h2', { dir: 'ltr' }, t.term);
       if (t.category) title.append(el('span', { className: 'tag' }, t.category));
-      card.append(title, el('p', { dir: 'auto' }, t.meaning));
+      const summary = el('summary');
+      summary.append(title);
+      card.append(summary, el('p', { dir: 'auto' }, t.meaning));
       if (t.code) card.append(el('pre', {}, t.code));
       const edit = el('button', { type: 'button' }, 'تعديل');
       const del = el('button', { type: 'button', className: 'danger' }, 'حذف');
