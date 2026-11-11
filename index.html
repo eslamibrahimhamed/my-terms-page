@@ -287,15 +287,15 @@
         box.append(head);
         const questions = [];
         for (const item of t.interview) {
-          const q = el('p', { className: 'q', dir: 'auto' }, item.q);
+          const q = el('p', { className: 'q', dir: 'auto' }, item.qAr || item.q);
           questions.push([q, item]);
           box.append(q, el('p', { dir: 'auto' }, item.a));
           if (item.code) box.append(el('pre', {}, item.code));
         }
         // Swaps the questions between English and Arabic without re-rendering (keeps the card open)
         if (t.interview.some((i) => i.qAr)) {
-          let arabic = false;
-          const toggle = el('button', { type: 'button', className: 'chip' }, 'عربي');
+          let arabic = true;
+          const toggle = el('button', { type: 'button', className: 'chip' }, 'English');
           toggle.onclick = () => {
             arabic = !arabic;
             toggle.textContent = arabic ? 'English' : 'عربي';
