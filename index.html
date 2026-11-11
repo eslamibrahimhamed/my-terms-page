@@ -208,7 +208,8 @@
     const chips = $('chips');
     chips.replaceChildren();
     for (const c of categories) {
-      const count = terms.filter((t) => t.category === c).length;
+      // A category with subcategories counts them, otherwise it counts its terms
+      const count = subsOf(c).length || terms.filter((t) => t.category === c).length;
       const chip = el('button', { type: 'button', dir: 'auto', className: 'chip' + (c === activeCategory ? ' active' : '') }, `${c} (${count})`);
       chip.onclick = () => {
         activeCategory = c;
