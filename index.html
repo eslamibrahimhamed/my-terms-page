@@ -34,6 +34,7 @@
   button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
   button.danger { color: var(--danger); }
   .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+  .row .close { margin-inline-start: auto; color: var(--muted); }
   .tools { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 24px 0 12px; }
   .tools input { flex: 1; min-width: 180px; }
   .term { margin-bottom: 12px; }
@@ -54,6 +55,7 @@
   .interview-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 8px; }
   .interview h3 { margin: 0; font-size: 15px; color: var(--accent-sub); }
   .interview .q { font-weight: 600; margin-top: 14px; }
+  .term p code { font-family: Consolas, "Courier New", monospace; font-size: 14px; background: var(--code); padding: 0 4px; border-radius: 4px; }
   .tag { display: inline-block; font-size: 12px; font-weight: normal; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 0 8px; margin-inline-start: 8px; vertical-align: middle; }
 </style>
 </head>
@@ -229,6 +231,15 @@
     return options;
   }
 
+  // Text between `backticks` becomes LTR inline code, so code inside Arabic sentences keeps its order
+  const richParts = (text = '') => text.split('`').map((part, i) => (i % 2 ? el('code', { dir: 'ltr' }, part) : part));
+
+  function rich(tag, props, text) {
+    const node = el(tag, props);
+    node.append(...richParts(text));
+    return node;
+  }
+
   function renderChips(categories) {
     const chips = $('chips');
     chips.replaceChildren();
@@ -278,7 +289,7 @@
       if (t.category) title.append(el('span', { className: 'tag' }, t.subcategory ? `${t.category} › ${t.subcategory}` : t.category));
       const summary = el('summary');
       summary.append(title);
-      card.append(summary, el('p', { dir: 'auto' }, t.meaning));
+      card.append(summary, rich('p', { dir: 'auto' }, t.meaning));
       if (t.code) card.append(el('pre', {}, t.code));
       if (t.interview?.length) {
         const box = el('section', { className: 'interview' });
@@ -287,9 +298,9 @@
         box.append(head);
         const questions = [];
         for (const item of t.interview) {
-          const q = el('p', { className: 'q', dir: 'auto' }, item.qAr || item.q);
+          const q = rich('p', { className: 'q', dir: 'auto' }, item.qAr || item.q);
           questions.push([q, item]);
-          box.append(q, el('p', { dir: 'auto' }, item.a));
+          box.append(q, rich('p', { dir: 'auto' }, item.a));
           if (item.code) box.append(el('pre', {}, item.code));
         }
         // Swaps the questions between English and Arabic without re-rendering (keeps the card open)
@@ -299,7 +310,7 @@
           toggle.onclick = () => {
             arabic = !arabic;
             toggle.textContent = arabic ? 'English' : 'عربي';
-            for (const [p, item] of questions) p.textContent = arabic ? item.qAr || item.q : item.q;
+            for (const [p, item] of questions) p.replaceChildren(...richParts(arabic ? item.qAr || item.q : item.q));
           };
           head.append(toggle);
         }
@@ -309,8 +320,13 @@
       const del = el('button', { type: 'button', className: 'danger' }, 'حذف');
       edit.onclick = () => startEdit(t);
       del.onclick = () => confirm(`تحذف "${t.term}"؟`) && commit(`delete: ${t.term}`, (all) => all.filter((x) => x.id !== t.id));
+      const close = el('button', { type: 'button', className: 'close' }, 'قفل ▴');
+      close.onclick = () => {
+        card.open = false;
+        summary.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      };
       const actions = el('div', { className: 'row' });
-      actions.append(edit, del);
+      actions.append(edit, del, close);
       card.append(actions);
       list.append(card);
     }
