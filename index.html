@@ -9,13 +9,13 @@
   :root {
     --bg: #f6f7f9; --card: #fff; --text: #1d2330; --muted: #667085;
     --line: #e3e6ea; --accent: #2f6fde; --code: #f1f3f6; --danger: #c4372d;
-    --accent-sub: #0f8a6c;
+    --accent-sub: #0f8a6c; --note: #a8650a;
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --bg: #14161a; --card: #1d2026; --text: #e7e9ee; --muted: #9aa3b2;
       --line: #2c3038; --accent: #6c9cf0; --code: #262a31; --danger: #ef6b61;
-      --accent-sub: #2f9e7c;
+      --accent-sub: #2f9e7c; --note: #e3b341;
     }
   }
   * { box-sizing: border-box; }
@@ -56,6 +56,8 @@
   .interview h3 { margin: 0; font-size: 15px; color: var(--accent-sub); }
   .interview .q { font-weight: 600; margin-top: 14px; }
   .interview .why strong { color: var(--accent-sub); }
+  .interview .note { border-inline-start: 3px solid var(--note); padding-inline-start: 8px; }
+  .interview .note strong { color: var(--note); }
   .term p code { font-family: Consolas, "Courier New", monospace; font-size: 14px; background: var(--code); padding: 0 4px; border-radius: 4px; }
   .tag { display: inline-block; font-size: 12px; font-weight: normal; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 0 8px; margin-inline-start: 8px; vertical-align: middle; }
 </style>
@@ -134,18 +136,19 @@
   const fromBase64 = (b64) => new TextDecoder().decode(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)));
   const sameTerm = (a, b) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
-  // Textarea format per question: "Q: english", optional "س: عربي", "A: answer", optional "ليه: reason", then optional code lines
+  // Textarea format per question: "Q: english", optional "س: عربي", "A: answer", optional "ليه: reason" and "ملاحظة: quiz feedback", then optional code lines
   function parseInterview(text) {
     return text.split(/^(?=Q:)/m).map((b) => b.trim()).filter((b) => b.startsWith('Q:')).map((block) => {
       const [qLine, ...rest] = block.split('\n');
       const header = {};
       let i = 0;
-      for (let m; i < rest.length && (m = rest[i].match(/^(س|A|ليه):(.*)$/)); i++) header[m[1]] = m[2].trim();
+      for (let m; i < rest.length && (m = rest[i].match(/^(س|A|ليه|ملاحظة):(.*)$/)); i++) header[m[1]] = m[2].trim();
       const item = {
         q: qLine.slice(2).trim(),
         ...(header['س'] ? { qAr: header['س'] } : {}),
         a: header.A || '',
         ...(header['ليه'] ? { why: header['ليه'] } : {}),
+        ...(header['ملاحظة'] ? { feedback: header['ملاحظة'] } : {}),
       };
       const code = rest.slice(i).join('\n').replace(/^\n+/, '').trimEnd();
       return code ? { ...item, code } : item;
@@ -154,7 +157,7 @@
 
   const formatInterview = (items = []) =>
     items
-      .map((i) => [`Q: ${i.q}`, i.qAr && `س: ${i.qAr}`, `A: ${i.a}`, i.why && `ليه: ${i.why}`, i.code].filter(Boolean).join('\n'))
+      .map((i) => [`Q: ${i.q}`, i.qAr && `س: ${i.qAr}`, `A: ${i.a}`, i.why && `ليه: ${i.why}`, i.feedback && `ملاحظة: ${i.feedback}`, i.code].filter(Boolean).join('\n'))
       .join('\n\n');
 
   async function gh(method, body) {
@@ -248,6 +251,13 @@
     return node;
   }
 
+  // A quiz note line: colored label + rich text
+  function labeled(label, text) {
+    const p = rich('p', { dir: 'auto', className: 'note' }, text);
+    p.prepend(el('strong', {}, label));
+    return p;
+  }
+
   function renderChips(categories) {
     const chips = $('chips');
     chips.replaceChildren();
@@ -279,7 +289,7 @@
     const shown = terms
       .filter((t) => q || !activeCategory || t.category === activeCategory)
       .filter((t) => q || !subOptions.length || (t.subcategory || '') === activeSub)
-      .filter((t) => !q || [t.term, t.category, t.subcategory, t.meaning, ...(t.interview || []).flatMap((i) => [i.q, i.qAr, i.a, i.why])].join(' ').toLowerCase().includes(q))
+      .filter((t) => !q || [t.term, t.category, t.subcategory, t.meaning, ...(t.interview || []).flatMap((i) => [i.q, i.qAr, i.a, i.why, i.feedback])].join(' ').toLowerCase().includes(q))
       .sort((a, b) => a.id - b.id);
 
     $('count').textContent = terms.length ? `${terms.length} مصطلح` : '';
@@ -304,6 +314,7 @@
         const head = el('div', { className: 'interview-head' });
         head.append(el('h3', {}, 'أسئلة الإنترفيو'));
         box.append(head);
+        if (t.quizNote) box.append(labeled('آخر اختبار: ', t.quizNote));
         const questions = [];
         for (const item of t.interview) {
           const q = rich('p', { className: 'q', dir: 'auto' }, item.qAr || item.q);
@@ -314,6 +325,7 @@
             why.prepend(el('strong', {}, 'ليه؟ '));
             box.append(why);
           }
+          if (item.feedback) box.append(labeled('ملاحظتي على إجابتك: ', item.feedback));
           if (item.code) box.append(el('pre', {}, item.code));
         }
         // Swaps the questions between English and Arabic without re-rendering (keeps the card open)
