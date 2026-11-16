@@ -303,7 +303,10 @@
 
     for (const t of shown) {
       const card = el('details', { className: 'term' });
-      const title = el('h2', { dir: 'ltr' }, t.term);
+      // "english — عربي": the Arabic half gets its own RTL direction, so "بالـ AI" keeps its word order
+      const cut = t.term.indexOf(' — ');
+      const title = el('h2', { dir: 'ltr' }, cut < 0 ? t.term : t.term.slice(0, cut + 3));
+      if (cut >= 0) title.append(el('bdi', { dir: 'rtl' }, t.term.slice(cut + 3)));
       if (t.category) title.append(el('span', { className: 'tag' }, t.subcategory ? `${t.category} › ${t.subcategory}` : t.category));
       const summary = el('summary');
       summary.append(title);
