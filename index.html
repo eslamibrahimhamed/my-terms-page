@@ -214,8 +214,9 @@
     return node;
   }
 
+  // Subcategories keep the order they were first added, so course lessons stay in lesson order
   const subsOf = (c) =>
-    [...new Set(terms.filter((t) => t.subcategory && sameTerm(t.category || '', c)).map((t) => t.subcategory))].sort((a, b) => a.localeCompare(b));
+    [...new Set(terms.filter((t) => t.subcategory && sameTerm(t.category || '', c)).sort((a, b) => a.id - b.id).map((t) => t.subcategory))];
 
   function fillSubs() {
     $('subcategories').replaceChildren(...subsOf($('category').value).map((s) => el('option', { value: s })));
