@@ -45,10 +45,21 @@
   .term[open] h2::before { content: '▾ '; }
   .term p { margin: 6px 0 0; white-space: pre-wrap; }
   pre { background: var(--code); padding: 10px; border-radius: 8px; margin: 8px 0 0; white-space: pre-wrap; direction: ltr; text-align: left; }
+  .code { position: relative; margin: 8px 0 0; }
+  .code pre { margin: 0; padding-right: 46px; }
+  .copy { position: absolute; top: 6px; right: 6px; display: grid; place-items: center; width: 32px; height: 32px; padding: 0; color: var(--muted); }
+  .copy:hover { color: var(--text); }
+  .copy.done { color: var(--accent-sub); border-color: var(--accent-sub); }
+  .copy svg, .arrow svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
   .empty { color: var(--muted); text-align: center; padding: 32px 0; }
   .count { color: var(--muted); font-size: 14px; }
-  .chips { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 12px; }
-  .chip { padding: 4px 12px; border-radius: 999px; font-size: 14px; }
+  .scroller { display: flex; align-items: center; gap: 4px; margin: 0 0 12px; }
+  .chips { display: flex; gap: 6px; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+  .chips::-webkit-scrollbar { display: none; }
+  .arrow { display: none; flex: none; place-items: center; width: 30px; height: 30px; padding: 0; border-radius: 999px; color: var(--muted); }
+  .arrow:hover { color: var(--text); }
+  .scroller.overflow .arrow { display: grid; }
+  .chip { flex: none; white-space: nowrap; padding: 4px 12px; border-radius: 999px; font-size: 14px; }
   .chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
   #subchips .chip.active { background: var(--accent-sub); border-color: var(--accent-sub); }
   .interview { margin-top: 12px; padding: 4px 12px 12px; border: 1px solid var(--accent-sub); border-radius: 8px; }
@@ -216,6 +227,77 @@
     return node;
   }
 
+  const svg = (inner) => `<svg viewBox="0 0 24 24" aria-hidden="true">${inner}</svg>`;
+  const ICON_COPY = svg('<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/>');
+  const ICON_DONE = svg('<path d="M20 6 9 17l-5-5"/>');
+
+  // A code block with a copy button in its corner
+  function codeBlock(text) {
+    const pre = el('pre', {}, text);
+    const btn = el('button', { type: 'button', className: 'copy', title: 'نسخ', innerHTML: ICON_COPY });
+    btn.setAttribute('aria-label', 'نسخ');
+    btn.onclick = async () => {
+      try {
+        await navigator.clipboard.writeText(text);
+      } catch {
+        getSelection().selectAllChildren(pre); // clipboard blocked: select it so Ctrl+C works
+        return;
+      }
+      btn.innerHTML = ICON_DONE;
+      btn.title = 'اتنسخ';
+      btn.classList.add('done');
+      setTimeout(() => {
+        btn.innerHTML = ICON_COPY;
+        btn.title = 'نسخ';
+        btn.classList.remove('done');
+      }, 1500);
+    };
+    const wrap = el('div', { className: 'code' });
+    wrap.append(pre, btn);
+    return wrap;
+  }
+
+  // A chip row stays on one line and scrolls sideways with arrows instead of wrapping.
+  // Returns update(), which shows the arrows only when the row overflows, each one until its own end
+  function scroller(row) {
+    const arrow = (dir, path, label) => {
+      const b = el('button', { type: 'button', className: 'arrow', innerHTML: svg(`<path d="${path}"/>`) });
+      b.setAttribute('aria-label', label);
+      b.onclick = () => row.scrollBy({ left: dir * row.clientWidth * 0.7, behavior: 'smooth' });
+      return b;
+    };
+    const left = arrow(-1, 'M15 6l-6 6 6 6', 'شمال');
+    const right = arrow(1, 'M9 6l6 6-6 6', 'يمين');
+    const wrap = el('div', { className: 'scroller' });
+    row.replaceWith(wrap);
+    wrap.append(right, row, left); // the page is RTL, so the first child sits on the right
+    // Compares against the whole width (arrows included) without hiding the arrows, so the scroll position never gets clamped
+    const update = () => {
+      wrap.classList.toggle('overflow', row.scrollWidth > wrap.clientWidth + 1);
+      const r = row.getBoundingClientRect();
+      const kids = [...row.children].map((k) => k.getBoundingClientRect());
+      left.style.visibility = kids.some((k) => k.left < r.left - 1) ? 'visible' : 'hidden';
+      right.style.visibility = kids.some((k) => k.right > r.right + 1) ? 'visible' : 'hidden';
+    };
+    row.addEventListener('scroll', update, { passive: true });
+    addEventListener('resize', update);
+    return update;
+  }
+
+  // After a row is rebuilt: keep its scroll position and bring the active chip into view
+  function settle(row, keep, update) {
+    update();
+    row.scrollLeft = keep;
+    const active = row.querySelector('.active');
+    if (active) {
+      const r = row.getBoundingClientRect();
+      const c = active.getBoundingClientRect();
+      if (c.left < r.left) row.scrollLeft -= r.left - c.left + 8;
+      else if (c.right > r.right) row.scrollLeft += c.right - r.right + 8;
+    }
+    update();
+  }
+
   // Subcategories keep the order they were first added, so course lessons stay in lesson order;
   // Operators is a side tab, so it always comes last
   const subsOf = (c) => {
@@ -230,6 +312,7 @@
   // Returns the sub options of the active category; '' = terms with no subcategory ("عام")
   function renderSubChips() {
     const box = $('subchips');
+    const keep = box.scrollLeft;
     box.replaceChildren();
     const inCategory = terms.filter((t) => t.category === activeCategory);
     const subs = subsOf(activeCategory);
@@ -245,6 +328,7 @@
       };
       box.append(chip);
     }
+    settle(box, keep, fitSubs);
     return options;
   }
 
@@ -266,6 +350,7 @@
 
   function renderChips(categories) {
     const chips = $('chips');
+    const keep = chips.scrollLeft;
     chips.replaceChildren();
     for (const c of categories) {
       // A category with subcategories counts them, otherwise it counts its terms
@@ -280,6 +365,7 @@
       };
       chips.append(chip);
     }
+    settle(chips, keep, fitChips);
   }
 
   function render() {
@@ -317,7 +403,7 @@
       const summary = el('summary');
       summary.append(title);
       card.append(summary, rich('p', { dir: 'auto' }, t.meaning));
-      if (t.code) card.append(el('pre', {}, t.code));
+      if (t.code) card.append(codeBlock(t.code));
       if (t.interview?.length) {
         const box = el('section', { className: 'interview' });
         const head = el('div', { className: 'interview-head' });
@@ -335,7 +421,7 @@
             box.append(why);
           }
           if (item.feedback) box.append(labeled('ملاحظتي على إجابتك: ', item.feedback));
-          if (item.code) box.append(el('pre', {}, item.code));
+          if (item.code) box.append(codeBlock(item.code));
         }
         // Swaps the questions between English and Arabic without re-rendering (keeps the card open)
         if (t.interview.some((i) => i.qAr)) {
@@ -463,6 +549,9 @@
     resetForm();
     render();
   };
+
+  const fitChips = scroller($('chips'));
+  const fitSubs = scroller($('subchips'));
 
   $('toggleForm').onclick = () => showForm($('form').hidden);
   $('cancel').onclick = resetForm;
