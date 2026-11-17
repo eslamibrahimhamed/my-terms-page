@@ -59,6 +59,7 @@
   .interview .note { border-inline-start: 3px solid var(--note); padding-inline-start: 8px; }
   .interview .note strong { color: var(--note); }
   .term p code { font-family: Consolas, "Courier New", monospace; font-size: 14px; background: var(--code); padding: 0 4px; border-radius: 4px; }
+  #form { margin-top: 12px; }
   .tag { display: inline-block; font-size: 12px; font-weight: normal; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 0 8px; margin-inline-start: 8px; vertical-align: middle; }
 </style>
 </head>
@@ -75,7 +76,8 @@
   </form>
 
   <div id="app" hidden>
-    <form id="form">
+    <button type="button" class="primary" id="toggleForm">إضافة مصطلح</button>
+    <form id="form" hidden>
       <label for="term">المصطلح</label>
       <input id="term" class="ltr" required autocomplete="off" placeholder="closure">
       <label for="category">القسم</label>
@@ -214,9 +216,12 @@
     return node;
   }
 
-  // Subcategories keep the order they were first added, so course lessons stay in lesson order
-  const subsOf = (c) =>
-    [...new Set(terms.filter((t) => t.subcategory && sameTerm(t.category || '', c)).sort((a, b) => a.id - b.id).map((t) => t.subcategory))];
+  // Subcategories keep the order they were first added, so course lessons stay in lesson order;
+  // Operators is a side tab, so it always comes last
+  const subsOf = (c) => {
+    const subs = [...new Set(terms.filter((t) => t.subcategory && sameTerm(t.category || '', c)).sort((a, b) => a.id - b.id).map((t) => t.subcategory))];
+    return [...subs.filter((s) => !sameTerm(s, 'Operators')), ...subs.filter((s) => sameTerm(s, 'Operators'))];
+  };
 
   function fillSubs() {
     $('subcategories').replaceChildren(...subsOf($('category').value).map((s) => el('option', { value: s })));
@@ -372,6 +377,7 @@
     $('interview').value = formatInterview(t.interview);
     $('submit').textContent = 'حفظ التعديل';
     $('cancel').hidden = false;
+    showForm(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
     $('term').focus();
   }
@@ -381,6 +387,13 @@
     $('form').reset();
     $('submit').textContent = 'إضافة';
     $('cancel').hidden = true;
+    showForm(false);
+  }
+
+  // The form stays hidden until the toggle button or an edit opens it
+  function showForm(open) {
+    $('form').hidden = !open;
+    $('toggleForm').textContent = open ? 'قفل الفورم' : 'إضافة مصطلح';
   }
 
   async function load() {
@@ -451,6 +464,7 @@
     render();
   };
 
+  $('toggleForm').onclick = () => showForm($('form').hidden);
   $('cancel').onclick = resetForm;
   $('search').oninput = render;
   $('category').oninput = fillSubs;
