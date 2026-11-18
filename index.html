@@ -299,10 +299,12 @@
   }
 
   // Subcategories keep the order they were first added, so course lessons stay in lesson order;
-  // Operators is a side tab, so it always comes last
+  // side tabs (Operators, a course's Prompt tab) always come last, in this order
+  const LAST_TABS = ['Operators', 'Prompt'];
   const subsOf = (c) => {
     const subs = [...new Set(terms.filter((t) => t.subcategory && sameTerm(t.category || '', c)).sort((a, b) => a.id - b.id).map((t) => t.subcategory))];
-    return [...subs.filter((s) => !sameTerm(s, 'Operators')), ...subs.filter((s) => sameTerm(s, 'Operators'))];
+    const rank = (s) => LAST_TABS.findIndex((name) => sameTerm(s, name));
+    return [...subs.filter((s) => rank(s) < 0), ...LAST_TABS.flatMap((name) => subs.filter((s) => sameTerm(s, name)))];
   };
 
   function fillSubs() {
