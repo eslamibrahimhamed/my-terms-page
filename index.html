@@ -9,13 +9,13 @@
   :root {
     --bg: #f6f7f9; --card: #fff; --text: #1d2330; --muted: #667085;
     --line: #e3e6ea; --accent: #2f6fde; --code: #f1f3f6; --danger: #c4372d;
-    --accent-sub: #0f8a6c; --note: #a8650a;
+    --accent-sub: #0f8a6c; --note: #a8650a; --accent-sec: #7b4bd1;
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --bg: #14161a; --card: #1d2026; --text: #e7e9ee; --muted: #9aa3b2;
       --line: #2c3038; --accent: #6c9cf0; --code: #262a31; --danger: #ef6b61;
-      --accent-sub: #2f9e7c; --note: #e3b341;
+      --accent-sub: #2f9e7c; --note: #e3b341; --accent-sec: #8a63d2;
     }
   }
   * { box-sizing: border-box; }
@@ -59,8 +59,10 @@
   .arrow { display: none; flex: none; place-items: center; width: 30px; height: 30px; padding: 0; border-radius: 999px; color: var(--muted); }
   .arrow:hover { color: var(--text); }
   .scroller.overflow .arrow { display: grid; }
+  .scroller[hidden] { display: none; }
   .chip { flex: none; white-space: nowrap; padding: 4px 12px; border-radius: 999px; font-size: 14px; }
   .chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  #sections .chip.active { background: var(--accent-sec); border-color: var(--accent-sec); }
   #subchips .chip.active { background: var(--accent-sub); border-color: var(--accent-sub); }
   .interview { margin-top: 12px; padding: 4px 12px 12px; border: 1px solid var(--accent-sub); border-radius: 8px; }
   .interview-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 8px; }
@@ -94,6 +96,9 @@
       <label for="category">القسم</label>
       <input id="category" class="ltr" list="categories" required autocomplete="off" placeholder="JS">
       <datalist id="categories"></datalist>
+      <label for="section">مجموعة (اختياري)</label>
+      <input id="section" class="ltr" list="section-list" autocomplete="off" placeholder="The Frontend AI Toolchain">
+      <datalist id="section-list"></datalist>
       <label for="subcategory">قسم فرعي (اختياري)</label>
       <input id="subcategory" class="ltr" list="subcategories" autocomplete="off" placeholder="Fundamentals">
       <datalist id="subcategories"></datalist>
@@ -115,6 +120,7 @@
     </div>
 
     <div class="chips" id="chips"></div>
+    <div class="chips" id="sections"></div>
     <div class="chips" id="subchips"></div>
     <div id="list"></div>
   </div>
@@ -130,6 +136,7 @@
   let terms = [];
   let editingId = null;
   let activeCategory = '';
+  let activeSection = '';
   let activeSub = '';
 
   function readToken() {
@@ -299,25 +306,59 @@
   }
 
   // Subcategories keep the order they were first added, so course lessons stay in lesson order;
-  // side tabs (Operators, a course's Prompt tab) always come last, in this order
+  // side tabs (Operators, a course's Prompt tab) always come last, in this order.
+  // sec limits them to one section ('' = no section); undefined = the whole category
   const LAST_TABS = ['Operators', 'Prompt'];
-  const subsOf = (c) => {
-    const subs = [...new Set(terms.filter((t) => t.subcategory && sameTerm(t.category || '', c)).sort((a, b) => a.id - b.id).map((t) => t.subcategory))];
+  const inSection = (t, sec) => sec === undefined || (t.section || '') === sec;
+  const subsOf = (c, sec) => {
+    const subs = [...new Set(terms.filter((t) => t.subcategory && sameTerm(t.category || '', c) && inSection(t, sec)).sort((a, b) => a.id - b.id).map((t) => t.subcategory))];
     const rank = (s) => LAST_TABS.findIndex((name) => sameTerm(s, name));
     return [...subs.filter((s) => rank(s) < 0), ...LAST_TABS.flatMap((name) => subs.filter((s) => sameTerm(s, name)))];
   };
 
-  function fillSubs() {
-    $('subcategories').replaceChildren(...subsOf($('category').value).map((s) => el('option', { value: s })));
+  // Sections group a category's subcategories (a course's parts, each with its lessons), in the order they were first added
+  const sectionsOf = (c) => [...new Set(terms.filter((t) => t.section && sameTerm(t.category || '', c)).sort((a, b) => a.id - b.id).map((t) => t.section))];
+
+  function fillLists() {
+    const c = $('category').value;
+    $('section-list').replaceChildren(...sectionsOf(c).map((s) => el('option', { value: s })));
+    $('subcategories').replaceChildren(...subsOf(c, $('section').value.trim() || undefined).map((s) => el('option', { value: s })));
   }
 
-  // Returns the sub options of the active category; '' = terms with no subcategory ("عام")
-  function renderSubChips() {
-    const box = $('subchips');
+  // Returns the section options of the active category ('' = terms with no section, "عام"); empty when it has no sections
+  function renderSectionChips() {
+    const box = $('sections');
     const keep = box.scrollLeft;
     box.replaceChildren();
     const inCategory = terms.filter((t) => t.category === activeCategory);
-    const subs = subsOf(activeCategory);
+    const secs = sectionsOf(activeCategory);
+    const options = secs.length && inCategory.some((t) => !t.section) ? [...secs, ''] : secs;
+    if (!options.includes(activeSection)) activeSection = options[0] ?? '';
+    box.parentElement.hidden = !options.length;
+    for (const s of options) {
+      // A section counts its lessons, otherwise its terms
+      const count = subsOf(activeCategory, s).length || inCategory.filter((t) => (t.section || '') === s).length;
+      const chip = el('button', { type: 'button', dir: 'auto', className: 'chip' + (s === activeSection ? ' active' : '') }, `${s || 'عام'} (${count})`);
+      chip.onclick = () => {
+        activeSection = s;
+        activeSub = '';
+        if (!editingId) $('section').value = s;
+        render();
+        if (!editingId) $('subcategory').value = activeSub;
+      };
+      box.append(chip);
+    }
+    settle(box, keep, fitSections);
+    return options;
+  }
+
+  // Returns the sub options of the active category, inside the active section when it has sections; '' = terms with no subcategory ("عام")
+  function renderSubChips(sec) {
+    const box = $('subchips');
+    const keep = box.scrollLeft;
+    box.replaceChildren();
+    const inCategory = terms.filter((t) => t.category === activeCategory && inSection(t, sec));
+    const subs = subsOf(activeCategory, sec);
     const options = subs.length && inCategory.some((t) => !t.subcategory) ? [...subs, ''] : subs;
     if (!options.includes(activeSub)) activeSub = options[0] ?? '';
     for (const s of options) {
@@ -355,15 +396,19 @@
     const keep = chips.scrollLeft;
     chips.replaceChildren();
     for (const c of categories) {
-      // A category with subcategories counts them, otherwise it counts its terms
-      const count = subsOf(c).length || terms.filter((t) => t.category === c).length;
+      // A category counts its sections, else its subcategories, else its terms
+      const count = sectionsOf(c).length || subsOf(c).length || terms.filter((t) => t.category === c).length;
       const chip = el('button', { type: 'button', dir: 'auto', className: 'chip' + (c === activeCategory ? ' active' : '') }, `${c} (${count})`);
       chip.onclick = () => {
         activeCategory = c;
+        activeSection = '';
         activeSub = '';
         if (!editingId) $('category').value = c;
         render();
-        if (!editingId) $('subcategory').value = activeSub;
+        if (!editingId) {
+          $('section').value = activeSection;
+          $('subcategory').value = activeSub;
+        }
       };
       chips.append(chip);
     }
@@ -375,15 +420,17 @@
     if (!categories.includes(activeCategory)) activeCategory = categories[0] ?? '';
     $('categories').replaceChildren(...categories.map((c) => el('option', { value: c })));
     renderChips(categories);
-    const subOptions = renderSubChips();
-    fillSubs();
+    const sec = renderSectionChips().length ? activeSection : undefined;
+    const subOptions = renderSubChips(sec);
+    fillLists();
 
     // A search looks through every category, the chips filter only when the search is empty
     const q = $('search').value.trim().toLowerCase();
     const shown = terms
       .filter((t) => q || !activeCategory || t.category === activeCategory)
+      .filter((t) => q || inSection(t, sec))
       .filter((t) => q || !subOptions.length || (t.subcategory || '') === activeSub)
-      .filter((t) => !q || [t.term, t.category, t.subcategory, t.meaning, ...(t.interview || []).flatMap((i) => [i.q, i.qAr, i.a, i.why, i.feedback])].join(' ').toLowerCase().includes(q))
+      .filter((t) => !q || [t.term, t.category, t.section, t.subcategory, t.meaning, ...(t.interview || []).flatMap((i) => [i.q, i.qAr, i.a, i.why, i.feedback])].join(' ').toLowerCase().includes(q))
       .sort((a, b) => a.id - b.id);
 
     $('count').textContent = terms.length ? `${terms.length} مصطلح` : '';
@@ -458,8 +505,9 @@
     editingId = t.id;
     $('term').value = t.term;
     $('category').value = t.category || '';
+    $('section').value = t.section || '';
     $('subcategory').value = t.subcategory || '';
-    fillSubs();
+    fillLists();
     $('meaning').value = t.meaning;
     $('code').value = t.code || '';
     $('interview').value = formatInterview(t.interview);
@@ -520,6 +568,7 @@
     const entry = {
       term: $('term').value.trim(),
       category: $('category').value.trim(),
+      section: $('section').value.trim(),
       subcategory: $('subcategory').value.trim(),
       meaning: $('meaning').value.trim(),
       code: $('code').value.trim(),
@@ -533,13 +582,15 @@
       }
       // Reuse an existing category's spelling so "js" and "JS" stay one chip
       entry.category = all.map((t) => t.category).find((c) => c && sameTerm(c, entry.category)) || entry.category;
-      entry.subcategory = all
-        .filter((t) => t.category === entry.category)
-        .map((t) => t.subcategory)
-        .find((s) => s && sameTerm(s, entry.subcategory)) || entry.subcategory;
+      const inCategory = all.filter((t) => t.category === entry.category);
+      entry.section = inCategory.map((t) => t.section).find((s) => s && sameTerm(s, entry.section)) || entry.section;
+      entry.subcategory = inCategory.map((t) => t.subcategory).find((s) => s && sameTerm(s, entry.subcategory)) || entry.subcategory;
+      // A lesson already filed under a section keeps it when the field is left empty
+      if (!entry.section && entry.subcategory) entry.section = inCategory.find((t) => t.section && t.subcategory === entry.subcategory)?.section || '';
       // Drop empty optional fields (no subcategory = single-level category)
-      const clean = ({ subcategory, interview, ...rest }) => ({
+      const clean = ({ section, subcategory, interview, ...rest }) => ({
         ...rest,
+        ...(section ? { section } : {}),
         ...(subcategory ? { subcategory } : {}),
         ...(interview.length ? { interview } : {}),
       });
@@ -547,18 +598,21 @@
     });
     if (!saved) return;
     activeCategory = entry.category;
+    activeSection = entry.section;
     activeSub = entry.subcategory;
     resetForm();
     render();
   };
 
   const fitChips = scroller($('chips'));
+  const fitSections = scroller($('sections'));
   const fitSubs = scroller($('subchips'));
 
   $('toggleForm').onclick = () => showForm($('form').hidden);
   $('cancel').onclick = resetForm;
   $('search').oninput = render;
-  $('category').oninput = fillSubs;
+  $('category').oninput = fillLists;
+  $('section').oninput = fillLists;
 
   if (token) load();
   else $('setup').hidden = false;
